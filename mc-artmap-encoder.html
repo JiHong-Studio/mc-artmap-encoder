@@ -30,6 +30,7 @@
     --ink-3: #a1a1aa;
     --accent: #2563eb;
     --accent-soft: #eff6ff;
+    --accent-dark: #1d4ed8;
     --ok: #16a34a;
     --radius: 10px;
     --ease: cubic-bezier(.22, .61, .36, 1);
@@ -77,13 +78,13 @@
     background: var(--line);
     border-color: var(--line-strong);
 }
-/* Selected chips */
+/* Selected chips — light blue in both themes */
 [data-theme="dark"] .chip.on {
-    background: #3f3f46;
-    border-color: #52525b;
-    color: #fff;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
 }
-[data-theme="dark"] .chip.on:hover { background: #52525b; border-color: #52525b; }
+[data-theme="dark"] .chip.on:hover { filter: brightness(1.15); }
 /* Segmented indicator: lighter than track in dark mode */
 [data-theme="dark"] .seg-indicator {
     background: #3f3f46;
@@ -215,6 +216,13 @@ h1 {
     transition: color var(--dur) var(--ease), text-decoration-color var(--dur) var(--ease);
 }
 .field .qa-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.last-comp {
+    font-size: 0.72rem;
+    color: var(--accent);
+    font-weight: 600;
+    margin-left: 7px;
+    font-style: normal;
+}
 label.check {
     display: flex; align-items: center; gap: 7px;
     font-size: 0.85rem; color: var(--ink-2);
@@ -486,11 +494,11 @@ textarea[readonly] { color: var(--ink-2); }
 }
 .chip:active { transform: scale(.95); }
 .chip.on {
-    background: var(--bg);
-    color: var(--ink);
-    box-shadow: 0 1px 3px rgba(0,0,0,.1), 0 0 0 0.5px var(--line);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
 }
-.chip.on:hover { background: var(--bg); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.12), 0 0 0 0.5px var(--line); }
+.chip.on:hover { background: var(--accent-soft); color: var(--accent); filter: brightness(.97); }
 .chip.on:active { transform: scale(.95); }
 .chip.on .chip-dot { background: var(--accent); transform: scale(1.15); }
 .chip-dot {
@@ -548,6 +556,125 @@ textarea[readonly] { color: var(--ink-2); }
     transition: transform var(--dur) var(--ease-bounce);
 }
 .switch.on .switch-knob { transform: translateX(18px); }
+
+/* ---------- comp warning modal ---------- */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.4);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.modal-overlay.open {
+    display: flex;
+    animation: fadeIn var(--dur) var(--ease);
+}
+.modal-box {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 28px 24px 20px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,.15);
+    animation: zoomIn var(--dur) var(--ease-bounce);
+}
+.modal-box p {
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: var(--ink-2);
+    margin-bottom: 20px;
+}
+.modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+.modal-btn {
+    padding: 8px 16px;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    border: 1px solid var(--line-strong);
+    background: var(--bg);
+    color: var(--ink-2);
+    text-decoration: none;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+    display: inline-flex;
+    align-items: center;
+}
+.modal-btn:hover { background: var(--bg-sunken); color: var(--ink); }
+.modal-btn:active { transform: scale(.95); }
+.modal-btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+.modal-btn-primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); color: #fff; }
+
+.modal-dont-show {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 14px;
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    cursor: pointer;
+    user-select: none;
+}
+.modal-dont-show input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+/* ---------- spotlight tour ---------- */
+.spotlight-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    pointer-events: none;
+}
+.spotlight-overlay.active { display: block; }
+.spotlight-hole {
+    position: absolute;
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+    transition: all .35s var(--ease);
+    pointer-events: none;
+}
+.spotlight-card {
+    position: absolute;
+    max-width: 320px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.2);
+    pointer-events: auto;
+    transition: top .35s var(--ease), left .35s var(--ease);
+}
+.spotlight-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink);
+    display: block;
+    margin-bottom: 6px;
+}
+.spotlight-text {
+    font-size: 0.83rem;
+    color: var(--ink-2);
+    line-height: 1.6;
+    margin-bottom: 14px;
+}
+.spotlight-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
 
 /* ---------- footer ---------- */
 .site-footer {
@@ -951,7 +1078,6 @@ hr.sep {
 <div class="container">
     <header>
         <h1>MC 方块量化编码器</h1>
-        <p class="subtitle">图片 → 方块调色板量化 → 压缩 → Base91 字符串（支持往返解码）</p>
     </header>
 
     <div class="tab-bar">
@@ -990,7 +1116,7 @@ hr.sep {
                     <input type="number" id="maxDim" value="1280" min="1" max="8192">
                 </div>
                 <div class="field field-wide">
-                    <span>压缩<a class="qa-link" href="/qa" target="_blank">这些是什么意思？</a></span>
+                    <span>压缩<span id="lastComp" class="last-comp"></span><a class="qa-link" href="/qa" target="_blank">这些是什么意思？</a></span>
                     <div class="chip-group" id="compChips"></div>
                 </div>
                 <div class="field field-wide">
@@ -1114,6 +1240,26 @@ hr.sep {
                     <span class="switch-knob"></span>
                 </button>
             </div>
+            <div class="setting-row">
+                <div class="setting-info">
+                    <span class="setting-name">专业模式</span>
+                    <span class="setting-desc">启用后跳过压缩方式修改的确认提示，减少操作步骤。</span>
+                </div>
+                <button class="switch" id="proModeSwitch" onclick="toggleProMode()">
+                    <span class="switch-knob"></span>
+                </button>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-head">帮助</div>
+            <div class="setting-row">
+                <div class="setting-info">
+                    <span class="setting-name">使用教程</span>
+                    <span class="setting-desc">回到首页，逐步引导了解各个功能区域</span>
+                </div>
+                <button class="secondary" onclick="startTour()">开始教程</button>
+            </div>
+        </div>
         </div>
         <div class="panel">
             <div class="panel-head">预览偏好</div>
@@ -1125,6 +1271,45 @@ hr.sep {
                 <button class="switch" id="codeVisibleSwitch" onclick="toggleCodeVisiblePref()">
                     <span class="switch-knob"></span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- comp warning modal -->
+    <div class="modal-overlay" id="compModal">
+        <div class="modal-box">
+            <p>您正在修改压缩方式，除非您认为其他压缩方式效果更好，否则该选项一般不建议修改，不合适的压缩方式将可能导致编码结果不佳。操作前建议阅读 QA 页面。</p>
+            <div class="modal-actions">
+                <a href="/qa" target="_blank" class="modal-btn">QA页面</a>
+                <button class="modal-btn" onclick="compModalCancel()">取消</button>
+                <button class="modal-btn modal-btn-primary" onclick="compModalProceed()">我知道我在做什么</button>
+            </div>
+            <label class="modal-dont-show">
+                <input type="checkbox" id="compDontShow"> 不再显示此提示
+            </label>
+        </div>
+    </div>
+
+    <!-- pro mode warning modal -->
+    <div class="modal-overlay" id="proModal">
+        <div class="modal-box">
+            <p>启用该模式后，将减少确认步骤，如果您对于不熟悉一些操作，请不要开启本功能。</p>
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="proModalCancel()">取消</button>
+                <button class="modal-btn modal-btn-primary" onclick="proModalConfirm()">确认启用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- spotlight tour -->
+    <div class="spotlight-overlay" id="spotlightOverlay">
+        <div class="spotlight-hole" id="spotlightHole"></div>
+        <div class="spotlight-card" id="spotlightCard">
+            <span class="spotlight-title" id="spotlightTitle"></span>
+            <p class="spotlight-text" id="spotlightText"></p>
+            <div class="spotlight-actions">
+                <button class="modal-btn" onclick="spotlightSkip()">跳过</button>
+                <button class="modal-btn modal-btn-primary" id="spotlightNext" onclick="spotlightNext()">下一步</button>
             </div>
         </div>
     </div>
@@ -1669,6 +1854,8 @@ async function processImage() {
 
         const encoded = b91encode(raw);
         document.getElementById('base91Output').value = encoded;
+        // Show actual compression method used
+        document.getElementById('lastComp').textContent = '上次: ' + METHOD_NAMES[method];
 
         // --- headline: character count + byte size ---
         document.getElementById('charCount').textContent = encoded.length.toLocaleString();
@@ -1833,6 +2020,7 @@ const CFG = {
     codeVisible: false,
     swipeSegment: false,
     theme: 'auto',
+    proMode: false,
 };
 
 function defaultConfig() {
@@ -1846,6 +2034,7 @@ function defaultConfig() {
         codeVisible: false,
         swipeSegment: false,
         theme: 'auto',
+        proMode: false,
     };
 }
 
@@ -1879,6 +2068,7 @@ function sanitiseConfig(c) {
         codeVisible: c.codeVisible === true,
         swipeSegment: c.swipeSegment === true,
         theme: ['light', 'dark', 'auto'].includes(c.theme) ? c.theme : 'auto',
+        proMode: c.proMode === true,
     };
 }
 
@@ -1917,6 +2107,7 @@ function readConfigFromUI() {
         codeVisible: CFG.codeVisible,
         swipeSegment: CFG.swipeSegment,
         theme: CFG.theme,
+        proMode: CFG.proMode,
     };
 }
 
@@ -1963,7 +2154,17 @@ function renderAllChips() {
     _segComp = buildSegment('compChips',
         COMP_OPTIONS.map(o => ({ value: o.value, label: o.label })),
         CFG.comp,
-        (v) => { CFG.comp = v; saveConfig(); rerunIfLoaded(); }
+        (v) => {
+            if (v !== 'auto' && !CFG.proMode && !COMP_CONFIRMED) {
+                PENDING_COMP = v;
+                document.getElementById('compModal').classList.add('open');
+                if (_segComp) _segComp.setValue(CFG.comp);
+            } else {
+                CFG.comp = v;
+                saveConfig();
+                rerunIfLoaded();
+            }
+        }
     );
     _segMode = buildSegment('optChips',
         MODE_OPTIONS,
@@ -1998,6 +2199,60 @@ const MODE_OPTIONS = [
 
 /* ---- segmented controller (half-swipe / half-snap) ---- */
 let _segComp = null, _segMode = null;
+
+/* ---- comp change warning ---- */
+let COMP_CONFIRMED = false;
+let PENDING_COMP = null;
+
+function compModalCancel() {
+    document.getElementById('compModal').classList.remove('open');
+    PENDING_COMP = null;
+    if (_segComp) _segComp.setValue(CFG.comp);
+}
+
+function compModalProceed() {
+    document.getElementById('compModal').classList.remove('open');
+    COMP_CONFIRMED = true;
+    const dontShow = document.getElementById('compDontShow');
+    if (dontShow && dontShow.checked) {
+        CFG.proMode = true;
+        applyPrefsSwitches();
+        saveConfig();
+    }
+    if (PENDING_COMP !== null) {
+        CFG.comp = PENDING_COMP;
+        if (_segComp) _segComp.setValue(PENDING_COMP);
+        saveConfig();
+        rerunIfLoaded();
+        PENDING_COMP = null;
+    }
+}
+
+/* ---- pro mode ---- */
+function toggleProMode() {
+    if (!CFG.proMode) {
+        // Turning on — show warning
+        document.getElementById('proModal').classList.add('open');
+    } else {
+        // Turning off
+        CFG.proMode = false;
+        COMP_CONFIRMED = false;
+        applyPrefsSwitches();
+        saveConfig();
+    }
+}
+
+function proModalCancel() {
+    document.getElementById('proModal').classList.remove('open');
+}
+
+function proModalConfirm() {
+    document.getElementById('proModal').classList.remove('open');
+    CFG.proMode = true;
+    COMP_CONFIRMED = true;
+    applyPrefsSwitches();
+    saveConfig();
+}
 
 function buildSegment(containerId, options, currentValue, onSelect) {
     const container = document.getElementById(containerId);
@@ -2352,7 +2607,101 @@ function toggleCodeVisiblePref() {
 function applyPrefsSwitches() {
     document.getElementById('swipeSwitch').classList.toggle('on', CFG.swipeSegment);
     document.getElementById('codeVisibleSwitch').classList.toggle('on', CFG.codeVisible);
+    document.getElementById('proModeSwitch').classList.toggle('on', CFG.proMode);
 }
+
+/* ---- spotlight tour ---- */
+const TOUR_STEPS = [
+    { selector: '#dropZone',   title: '① 上传图片', text: '点击此区域或拖拽图片到此上传。支持 PNG、JPG 等常见格式。' },
+    { selector: '#baseChips',  title: '② 选择材质', text: '选择地图画使用的方块材质。羊毛是默认选项，可多选搭配不同材质。' },
+    { selector: '#maxDim',     title: '③ 最大边长', text: '设置输出图片的最大边长（像素）。越大越精细，但编码结果更长。' },
+    { selector: '#compChips',  title: '④ 压缩方式', text: '一般选「自动」即可，编码器会自动选择体积最小的压缩方式。' },
+    { selector: '#optChips',   title: '⑤ 量化模式', text: '不满意效果图时可切换。「一致性」适合大部分图片，「抖动」适合照片。' },
+    { selector: '#encodeBtn',  title: '⑥ 开始编码', text: '点击后生成 Base91 编码字符串，结果会显示在下方。' },
+    { selector: '#copyBtn',    title: '⑦ 复制结果', text: '编码完成后点击复制，粘贴到游戏内即可导入地图画。' },
+];
+let _tourIdx = 0;
+
+function startTour() {
+    switchTab('encode');
+    // Expand params if collapsed on mobile
+    const block = document.getElementById('controlsBlock');
+    if (block.classList.contains('collapsed')) {
+        block.classList.remove('collapsed');
+        document.getElementById('paramToggle').classList.remove('open');
+    }
+    _tourIdx = 0;
+    document.getElementById('spotlightOverlay').classList.add('active');
+    showTourStep();
+}
+
+function showTourStep() {
+    const step = TOUR_STEPS[_tourIdx];
+    const el = document.querySelector(step.selector);
+    if (!el) { spotlightSkip(); return; }
+
+    // Scroll element into view
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        const hole = document.getElementById('spotlightHole');
+        const pad = 6;
+        hole.style.left = (r.left - pad) + 'px';
+        hole.style.top = (r.top - pad) + 'px';
+        hole.style.width = (r.width + pad * 2) + 'px';
+        hole.style.height = (r.height + pad * 2) + 'px';
+
+        // Position card — prefer below, fall back to above
+        const card = document.getElementById('spotlightCard');
+        const cardW = 320;
+        const cardH = 130;
+        const gap = 14;
+        let cardLeft = r.left + (r.width / 2) - (cardW / 2);
+        let cardTop = r.bottom + gap;
+
+        if (cardTop + cardH > window.innerHeight) {
+            cardTop = r.top - gap - cardH;
+        }
+        if (cardTop < 0) cardTop = gap;
+        if (cardLeft < gap) cardLeft = gap;
+        if (cardLeft + cardW > window.innerWidth - gap)
+            cardLeft = window.innerWidth - cardW - gap;
+
+        card.style.left = cardLeft + 'px';
+        card.style.top = cardTop + 'px';
+
+        document.getElementById('spotlightTitle').textContent = step.title;
+        document.getElementById('spotlightText').textContent = step.text;
+        document.getElementById('spotlightNext').textContent =
+            _tourIdx < TOUR_STEPS.length - 1 ? '下一步' : '完成';
+    }, 300);
+}
+
+function spotlightNext() {
+    _tourIdx++;
+    if (_tourIdx >= TOUR_STEPS.length) {
+        spotlightSkip();
+    } else {
+        showTourStep();
+    }
+}
+
+function spotlightSkip() {
+    document.getElementById('spotlightOverlay').classList.remove('active');
+}
+
+window.addEventListener('resize', () => {
+    if (document.getElementById('spotlightOverlay').classList.contains('active')) {
+        showTourStep();
+    }
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('spotlightOverlay').classList.contains('active')) {
+        spotlightSkip();
+    }
+});
 
 function copyOutput(e) {
     const ta = document.getElementById('base91Output');
