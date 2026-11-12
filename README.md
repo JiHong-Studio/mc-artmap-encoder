@@ -1,6 +1,6 @@
 # MC Artmap Encoder
 
-该页面为网易版《我的世界》纯字符导入地图画的编码实现，[mc.jihong.chengxing.site](https://mc.jihong.chengxing.site) 是托管在 Cloudflare 上的官方页面。此为纯前端实现，因此，若你打开该页面有困难，可下载该页面本地使用。
+该页面为网易版《我的世界》纯字符导入地图画的编码实现，[官方页面](https://mc.jihong.chengxing.site) 是托管在 Cloudflare 上的官方页面。此为纯前端实现，因此，若你打开官方页面时有困难，可下载HTML文件至本地使用。
 
 ## 功能
 
