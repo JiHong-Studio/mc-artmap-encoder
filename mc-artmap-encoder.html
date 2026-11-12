@@ -1,0 +1,2491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MC 方块量化编码器</title>
+<script>
+// Prevent flash: apply theme before CSS renders
+(function(){
+    var t = 'light';
+    try {
+        var s = JSON.parse(localStorage.getItem('mc-encoder-config-v2'));
+        if (s && s.theme === 'dark') t = 'dark';
+        else if (s && s.theme === 'auto') {
+            t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+    } catch(e){}
+    document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<style>
+:root {
+    --bg: #ffffff;
+    --bg-soft: #fafafa;
+    --bg-sunken: #f4f4f5;
+    --line: #e4e4e7;
+    --line-strong: #d4d4d8;
+    --ink: #18181b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --ok: #16a34a;
+    --radius: 10px;
+    --ease: cubic-bezier(.22, .61, .36, 1);
+    --ease-bounce: cubic-bezier(.34, 1.56, .64, 1);
+    --dur: .22s;
+}
+
+/* ---------- dark theme ---------- */
+[data-theme="dark"] {
+    --bg: #18181b;
+    --bg-soft: #1c1c1f;
+    --bg-sunken: #27272a;
+    --line: #3f3f46;
+    --line-strong: #52525b;
+    --ink: #f4f4f5;
+    --ink-2: #a1a1aa;
+    --ink-3: #71717a;
+    --accent: #3b82f6;
+    --accent-soft: #1e293b;
+    --ok: #22c55e;
+}
+/* Buttons: --ink is light in dark mode, use fixed dark bg for contrast */
+[data-theme="dark"] button:not(.secondary):not(.ghost):not(.copy-primary):not(.lb-close):not(.lt-btn):not(.seg-opt):not(.switch) {
+    background: #3f3f46;
+    border-color: #3f3f46;
+    color: #fff;
+}
+[data-theme="dark"] button:not(.secondary):not(.ghost):not(.copy-primary):not(.lb-close):not(.lt-btn):not(.seg-opt):not(.switch):hover {
+    background: #52525b;
+    border-color: #52525b;
+}
+[data-theme="dark"] button.copy-primary:not(.copied):not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+[data-theme="dark"] button.copy-primary:not(.copied):not(:disabled):hover {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+[data-theme="dark"] button.secondary {
+    background: var(--bg-sunken);
+    border-color: var(--line-strong);
+}
+[data-theme="dark"] button.secondary:hover {
+    background: var(--line);
+    border-color: var(--line-strong);
+}
+/* Selected chips */
+[data-theme="dark"] .chip.on {
+    background: #3f3f46;
+    border-color: #52525b;
+    color: #fff;
+}
+[data-theme="dark"] .chip.on:hover { background: #52525b; border-color: #52525b; }
+/* Segmented indicator: lighter than track in dark mode */
+[data-theme="dark"] .seg-indicator {
+    background: #3f3f46;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 0 0 0.5px var(--line-strong);
+}
+[data-theme="dark"] .seg-opt.on { color: #fff; }
+/* Layout toggle active */
+[data-theme="dark"] .lt-btn.on {
+    background: #3f3f46;
+    box-shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+/* Tooltip */
+[data-theme="dark"] .color-swatch .tip { background: #3f3f46; }
+/* Output block */
+[data-theme="dark"] .output-block.has-result { background: var(--bg-soft); }
+/* Color swatch border */
+[data-theme="dark"] .color-swatch { border-color: rgba(255,255,255,.08); }
+/* Switch track */
+[data-theme="dark"] .switch:not(.on) { background: var(--line-strong); }
+/* Lightbox darker */
+[data-theme="dark"] .lightbox { background: rgba(0, 0, 0, 0.9); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 40px 20px 64px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 880px; margin: 0 auto; }
+
+/* ---------- header ---------- */
+header { margin-bottom: 32px; }
+h1 {
+    font-size: 1.5rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+}
+.subtitle { color: var(--ink-3); font-size: 0.875rem; }
+
+/* ---------- tabs ---------- */
+.tab-bar {
+    display: flex;
+    gap: 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+}
+.tab {
+    padding: 10px 2px 12px;
+    color: var(--ink-3);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    user-select: none;
+}
+.tab:hover { color: var(--ink-2); }
+.tab:active { transform: translateY(1px); }
+.tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+/* ---------- panels ---------- */
+.panel {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+.panel-head {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--ink-2);
+    letter-spacing: 0.02em;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+}
+
+/* ---------- drop zone ---------- */
+.drop-zone {
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 44px 20px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--bg-soft);
+    transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+                transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.drop-zone:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, .08);
+}
+.drop-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: scale(1.01);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, .15);
+}
+.drop-zone:active { transform: scale(.99); }
+.drop-zone .dz-main { font-size: 0.95rem; color: var(--ink-2); }
+.drop-zone .dz-sub { font-size: 0.8125rem; color: var(--ink-3); margin-top: 4px; }
+
+/* ---------- controls ---------- */
+.controls {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-top: 20px;
+}
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > span { font-size: 0.75rem; color: var(--ink-3); font-weight: 500; }
+.field .qa-link {
+    font-size: 0.7rem;
+    color: var(--ink-3);
+    font-style: italic;
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    margin-left: 6px;
+    cursor: pointer;
+    transition: color var(--dur) var(--ease), text-decoration-color var(--dur) var(--ease);
+}
+.field .qa-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
+label.check {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.85rem; color: var(--ink-2);
+    cursor: pointer; user-select: none;
+    padding-bottom: 7px;
+}
+input[type="number"], select {
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    border-radius: 7px;
+    padding: 7px 10px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+input[type="number"] {
+    width: auto;
+    min-width: 100px;
+    border-radius: 999px;
+    padding: 7px 18px;
+    text-align: center;
+    background: var(--bg-sunken);
+    border: 1px solid transparent;
+}
+input[type="number"]:focus {
+    background: var(--bg);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+input[type="number"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+input[type="number"]:focus { background: var(--accent-soft); }
+select { cursor: pointer; min-width: 110px; }
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 15px; height: 15px;
+    cursor: pointer;
+}
+
+/* ---------- buttons ---------- */
+button {
+    background: var(--ink);
+    color: #fff;
+    border: 1px solid var(--ink);
+    border-radius: 7px;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease), transform var(--dur) var(--ease),
+                box-shadow var(--dur) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+}
+button:hover { background: #3f3f46; border-color: #3f3f46; }
+button:active { transform: scale(.95); }
+button.secondary {
+    background: var(--bg);
+    color: var(--ink-2);
+    border-color: var(--line-strong);
+}
+button.secondary:hover {
+    background: var(--bg-sunken);
+    color: var(--ink);
+    border-color: var(--ink-3);
+}
+button.secondary:active { transform: scale(.95); }
+button.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--ink-2);
+}
+button.ghost:hover { background: var(--bg-sunken); color: var(--ink); }
+button:disabled { opacity: .45; cursor: not-allowed; transform: none !important; }
+
+/* ---------- palette ---------- */
+.palette-wrap { margin-top: 24px; }
+.palette-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+.palette-head .label {
+    font-size: 0.75rem; font-weight: 600;
+    color: var(--ink-3); letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.palette-head .meta { font-size: 0.75rem; color: var(--ink-3); }
+.color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.color-swatch {
+    width: 34px; height: 34px;
+    border-radius: 7px;
+    border: 1px solid rgba(0,0,0,.08);
+    position: relative;
+    cursor: help;
+    transition: transform var(--dur) var(--ease-bounce), box-shadow var(--dur) var(--ease);
+}
+.color-swatch:hover { transform: translateY(-3px) scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.color-swatch:active { transform: translateY(-1px) scale(1.03); }
+.color-swatch.basic::after {
+    content: '';
+    position: absolute; top: 3px; right: 3px;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(255,255,255,.85);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+.color-swatch .tip {
+    position: absolute; bottom: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: var(--ink); color: #fff;
+    padding: 4px 9px; border-radius: 5px;
+    font-size: 0.75rem; white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease-bounce);
+    z-index: 20;
+    font-weight: 500;
+}
+.color-swatch:hover .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- textarea ---------- */
+textarea {
+    width: 100%;
+    background: var(--bg-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    resize: vertical;
+    word-break: break-all;
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    background: var(--bg);
+}
+textarea[readonly] { color: var(--ink-2); }
+
+/* ---------- inline output block ---------- */
+.output-block {
+    margin-top: 18px;
+    padding: 16px 18px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: 8px;
+    transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.output-block.has-result {
+    border-left-color: var(--accent);
+    background: #fcfdff;
+    animation: resultAppear var(--dur) var(--ease);
+}
+@keyframes resultAppear {
+    from { opacity: .7; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.output-block.has-result .result-count .num { color: var(--accent); }
+
+/* ---------- mobile result image & param collapse ---------- */
+.param-toggle {
+    display: none;
+    width: 100%;
+    margin-top: 18px;
+    padding: 11px 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink-2);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: left;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+}
+.param-toggle:hover { background: var(--bg-sunken); border-color: var(--line); color: var(--ink); }
+.param-toggle:active { transform: scale(.99); }
+.param-toggle .pt-text { font-weight: 600; color: var(--ink); }
+.param-toggle .pt-summary {
+    flex: 1;
+    color: var(--ink-3);
+    font-size: 0.78rem;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.param-toggle .pt-arrow {
+    color: var(--ink-3);
+    font-size: 0.8rem;
+    transition: transform var(--dur) var(--ease);
+}
+.param-toggle.open .pt-arrow { transform: rotate(180deg); }
+
+@media (max-width: 620px) {
+    .param-toggle { display: flex; }
+    .controls.collapsed { display: none; }
+
+    /* 有结果后：结果块在移动端更突出 */
+    body.has-result .output-block {
+        border-left-width: 3px;
+        padding: 14px 14px;
+        box-shadow: 0 2px 12px rgba(37, 99, 235, .08);
+    }
+    body.has-result .result-count .num { font-size: 2rem; }
+    body.has-result .palette-wrap { margin-top: 20px; }
+}
+
+/* ---------- custom multi-select chips ---------- */
+.field-wide { flex: 1 1 100%; }
+.field-note {
+    font-style: normal;
+    font-size: 0.7rem;
+    color: var(--ink-3);
+    margin-left: 5px;
+    font-weight: 400;
+}
+.chip-group {
+    display: flex;
+    align-self: flex-start;
+    width: max-content;
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: var(--bg-sunken);
+    border-radius: 999px;
+    padding: 3px;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-3);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+                box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+}
+.chip:hover {
+    color: var(--ink-2);
+    background: rgba(255,255,255,.5);
+}
+.chip:active { transform: scale(.95); }
+.chip.on {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,.1), 0 0 0 0.5px var(--line);
+}
+.chip.on:hover { background: var(--bg); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.12), 0 0 0 0.5px var(--line); }
+.chip.on:active { transform: scale(.95); }
+.chip.on .chip-dot { background: var(--accent); transform: scale(1.15); }
+.chip-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--ink-3);
+    flex: none;
+    transition: background var(--dur) var(--ease), transform var(--dur) var(--ease-bounce);
+}
+/* ---------- settings (个性化) ---------- */
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-info { flex: 1; min-width: 0; }
+.setting-name {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+.setting-desc {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    margin-top: 3px;
+    line-height: 1.45;
+}
+.switch {
+    width: 44px; height: 26px;
+    border-radius: 999px;
+    background: var(--line-strong);
+    border: none;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur) var(--ease);
+    padding: 0;
+    flex: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.switch:active { transform: scale(.94); }
+.switch.on { background: var(--accent); }
+.switch-knob {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: transform var(--dur) var(--ease-bounce);
+}
+.switch.on .switch-knob { transform: translateX(18px); }
+
+/* ---------- footer ---------- */
+.site-footer {
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+}
+.gh-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.8rem;
+    color: var(--ink-3);
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 999px;
+    transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.gh-link:hover {
+    color: var(--ink);
+    background: var(--bg-sunken);
+}
+.gh-link svg { transition: transform var(--dur) var(--ease); }
+.gh-link:hover svg { transform: scale(1.1); }
+
+/* ---------- segmented controller (half-swipe / half-snap) ---------- */
+.segment {
+    display: flex;
+    align-self: flex-start;
+    width: max-content;
+    max-width: 100%;
+    position: relative;
+    background: var(--bg-sunken);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    user-select: none;
+}
+.segment::-webkit-scrollbar { display: none; }
+.segment.swipe-on { touch-action: none; }
+.seg-indicator {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    height: calc(100% - 6px);
+    border-radius: 999px;
+    background: var(--bg);
+    box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 0.5px var(--line);
+    transition: transform var(--dur) var(--ease-bounce), width var(--dur) var(--ease-bounce);
+    pointer-events: none;
+    z-index: 0;
+}
+.seg-indicator.dragging {
+    transition: none;
+}
+.seg-opt {
+    position: relative;
+    z-index: 1;
+    background: transparent !important;
+    border: none !important;
+    color: var(--ink-3);
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color var(--dur) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
+    touch-action: none;
+}
+.seg-opt:hover { color: var(--ink-2); }
+.seg-opt:active { background: transparent !important; transform: none; }
+.seg-opt.on { color: var(--ink); font-weight: 600; }
+
+.palette-live {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.8125rem;
+    color: var(--ink-3);
+    min-height: 1.6em;
+    transition: color var(--dur) var(--ease);
+}
+.palette-live .pl-count { font-weight: 600; color: var(--ink); }
+.palette-live .pl-bar {
+    flex: 1 1 140px;
+    height: 4px;
+    background: var(--bg-sunken);
+    border-radius: 2px;
+    overflow: hidden;
+    max-width: 200px;
+}
+.palette-live .pl-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+/* ---------- code toggle ---------- */
+.code-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    font-weight: 500;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.code-toggle:hover {
+    background: var(--bg-sunken);
+    border-color: var(--line-strong);
+    color: var(--ink);
+}
+.code-toggle:active { transform: scale(.98); }
+.code-toggle .ct-icon {
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    transition: transform var(--dur) var(--ease-bounce);
+    width: 12px;
+    text-align: center;
+}
+.code-toggle.open .ct-icon { transform: rotate(90deg); }
+#base91Output { display: none; margin-top: 0; }
+#base91Output.shown {
+    display: block;
+    animation: slideDown var(--dur) var(--ease);
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- preview section (inside output block) ---------- */
+.preview-section {
+    margin-top: 14px;
+    margin-bottom: 14px;
+}
+.preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.preview-toolbar .pt-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.layout-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-sunken);
+    border-radius: 7px;
+    padding: 3px;
+}
+.lt-btn {
+    background: transparent;
+    border: none;
+    color: var(--ink-3);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+                box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+    line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+}
+.lt-btn:hover { color: var(--ink-2); }
+.lt-btn:active { transform: scale(.9); }
+.lt-btn.on {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+.preview-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.preview-pair.stack {
+    grid-template-columns: 1fr;
+}
+.preview-cell h3 {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+}
+.preview-cell canvas {
+    width: 100%;
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-sunken);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: zoom-in;
+    transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease),
+                box-shadow var(--dur) var(--ease);
+}
+.preview-cell canvas:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,.1);
+}
+.preview-cell canvas:active { transform: translateY(0) scale(.98); }
+.preview-cell canvas:not([width]) { display: none; }
+
+/* ---------- lightbox ---------- */
+.lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.82);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.lightbox.open {
+    display: flex;
+    animation: fadeIn var(--dur) var(--ease);
+}
+.lightbox.open canvas {
+    animation: zoomIn var(--dur) var(--ease-bounce);
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes zoomIn {
+    from { opacity: 0; transform: scale(.92); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.lightbox .lb-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 900px;
+    margin-bottom: 12px;
+}
+.lightbox .lb-title {
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+.lightbox .lb-close {
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.2);
+    color: #fff;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    font-family: inherit;
+}
+.lightbox .lb-close:hover { background: rgba(255,255,255,.22); }
+.lightbox canvas {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 8px;
+    background: #1a1a1a;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* ---------- result headline ---------- */
+.result-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+}
+.result-count {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    line-height: 1;
+}
+.result-count .num {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+.result-count .unit {
+    font-size: 0.875rem;
+    color: var(--ink-3);
+    font-weight: 500;
+}
+.result-count .bytes {
+    font-size: 0.8125rem;
+    color: var(--ink-3);
+    margin-left: 4px;
+    padding-left: 10px;
+    border-left: 1px solid var(--line);
+}
+.result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button.copy-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    padding: 10px 22px;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, .22);
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+button.copy-primary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    box-shadow: 0 3px 10px rgba(37, 99, 235, .3);
+    transform: translateY(-1px);
+}
+button.copy-primary:active { transform: scale(.94); }
+button.copy-primary:disabled {
+    background: var(--bg-sunken);
+    border-color: var(--line);
+    color: var(--ink-3);
+    box-shadow: none;
+    transform: none !important;
+}
+button.copy-primary.copied {
+    background: var(--ok);
+    border-color: var(--ok);
+    box-shadow: 0 3px 10px rgba(22, 163, 74, .3);
+}
+#base91Output {
+    font-size: 0.875rem;
+    color: var(--ink);
+    background: var(--bg);
+    border-color: var(--line-strong);
+    min-height: 74px;
+}
+
+/* ---------- stats ---------- */
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 14px;
+    font-size: 0.8125rem;
+    color: var(--ink-3);
+    min-height: 1.4em;
+}
+.stats .item { white-space: nowrap; }
+.stats .item b { color: var(--ink); font-weight: 600; }
+.stats .item.accent b { color: var(--accent); }
+
+/* ---------- misc ---------- */
+.hidden { display: none !important; }
+.loading { opacity: .5; pointer-events: none; }
+.row-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.hint {
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    margin-top: 8px;
+    line-height: 1.5;
+}
+hr.sep {
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 22px 0;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>MC 方块量化编码器</h1>
+        <p class="subtitle">图片 → 方块调色板量化 → 压缩 → Base91 字符串（支持往返解码）</p>
+    </header>
+
+    <div class="tab-bar">
+        <div class="tab active" data-tab="encode" onclick="switchTab('encode')">编码</div>
+        <div class="tab" data-tab="decode" onclick="switchTab('decode')">解码</div>
+        <div class="tab" data-tab="prefs" onclick="switchTab('prefs')">个性化</div>
+    </div>
+
+    <!-- ============ ENCODE ============ -->
+    <div id="tab-encode">
+        <div class="panel">
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <p class="dz-main">点击或拖拽图片到此处</p>
+                <p class="dz-sub">PNG / JPG / GIF / WebP / BMP</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" style="display:none">
+
+            <!-- 移动端：参数折叠条 -->
+            <button class="param-toggle" id="paramToggle" onclick="toggleParams()">
+                <span class="pt-text">参数</span>
+                <span class="pt-summary" id="paramSummary"></span>
+                <span class="pt-arrow">▾</span>
+            </button>
+
+            <div class="controls" id="controlsBlock">
+                <div class="field field-wide">
+                    <span>材质 <em class="field-note">可多选 · 决定主色调</em></span>
+                    <div class="chip-group" id="baseChips"></div>
+                </div>
+                <div class="field field-wide">
+                    <span>扩展包 <em class="field-note">可多选 · 补充自然方块</em></span>
+                    <div class="chip-group" id="extChips"></div>
+                </div>
+                <div class="field">
+                    <span>最大边长</span>
+                    <input type="number" id="maxDim" value="1280" min="1" max="8192">
+                </div>
+                <div class="field field-wide">
+                    <span>压缩<a class="qa-link" href="/qa" target="_blank">这些是什么意思？</a></span>
+                    <div class="chip-group" id="compChips"></div>
+                </div>
+                <div class="field field-wide">
+                    <span>量化模式<a class="qa-link" href="/qa" target="_blank">这些是什么意思？</a></span>
+                    <div class="chip-group" id="optChips"></div>
+                </div>
+            </div>
+
+            <div class="palette-live" id="paletteLive"></div>
+
+            <div class="row-buttons">
+                <button id="encodeBtn" onclick="processImage()">量化 &amp; 编码</button>
+                <button class="secondary" onclick="downloadQuantized()">下载量化图</button>
+            </div>
+
+            <!-- 编码结果：紧跟按钮，调参后立刻可见 -->
+            <div class="output-block" id="outputPanel">
+                <div class="result-head">
+                    <div class="result-count" id="resultCount">
+                        <span class="num" id="charCount">—</span>
+                        <span class="unit">字符</span>
+                        <span class="bytes" id="charBytes"></span>
+                    </div>
+                    <div class="result-actions">
+                        <button class="copy-primary" id="copyBtn" onclick="copyOutput(event)">复制</button>
+                        <button class="secondary" onclick="downloadText()">下载 .txt</button>
+                    </div>
+                </div>
+                <div class="code-toggle" id="codeToggle" onclick="toggleCode()">
+                    <span class="ct-icon">▸</span>
+                    <span class="ct-text">显示编码内容</span>
+                </div>
+                <textarea id="base91Output" readonly rows="6" placeholder="编码结果将显示在这里…"></textarea>
+
+                <!-- 预览图：可点击放大，可切换左右/上下排列 -->
+                <div class="preview-section" id="previewSection">
+                    <div class="preview-toolbar">
+                        <span class="pt-label">预览</span>
+                        <div class="layout-toggle" id="layoutToggle">
+                            <button class="lt-btn on" data-layout="side" onclick="setPreviewLayout('side')" title="左右并排">⬚</button>
+                            <button class="lt-btn" data-layout="stack" onclick="setPreviewLayout('stack')" title="上下排列">⬛</button>
+                        </div>
+                    </div>
+                    <div class="preview-pair" id="previewPair">
+                        <div class="preview-cell">
+                            <h3>原图</h3>
+                            <canvas id="canvasOriginal" onclick="openLightbox('canvasOriginal')"></canvas>
+                        </div>
+                        <div class="preview-cell">
+                            <h3>量化结果</h3>
+                            <canvas id="canvasQuantized" onclick="openLightbox('canvasQuantized')"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats" id="stats"></div>
+            </div>
+
+            <!-- 大图灯箱 -->
+            <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+                <div class="lb-bar">
+                    <span class="lb-title" id="lbTitle"></span>
+                    <button class="lb-close" onclick="closeLightbox()">✕</button>
+                </div>
+                <canvas id="lightboxCanvas"></canvas>
+            </div>
+
+            <div class="palette-wrap">
+                <div class="palette-head">
+                    <span class="label">调色板</span>
+                    <span class="meta" id="paletteMeta"></span>
+                </div>
+                <div class="color-palette" id="palette"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ DECODE ============ -->
+    <div id="tab-decode" class="hidden">
+        <div class="panel">
+            <div class="panel-head">粘贴 Base91 字符串</div>
+            <textarea id="base91Input" rows="6" placeholder="在此粘贴编码字符串…"></textarea>
+            <div class="row-buttons">
+                <button onclick="decodeImage()">解码</button>
+                <button class="secondary" onclick="downloadDecoded()">下载图片</button>
+            </div>
+            <div class="stats" id="decodeStats"></div>
+            <p class="hint">新格式会自动切换对应调色板；旧版 16 色羊毛编码仍可正常解码。</p>
+        </div>
+
+        <div class="panel">
+            <div class="preview-pair" style="grid-template-columns:1fr">
+                <div class="preview-cell">
+                    <h3>解码结果</h3>
+                    <canvas id="canvasDecoded" onclick="openLightbox('canvasDecoded')"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ PREFS ============ -->
+    <div id="tab-prefs" class="hidden">
+        <div class="panel">
+            <div class="panel-head">外观</div>
+            <div class="setting-row">
+                <div class="setting-info">
+                    <span class="setting-name">主题</span>
+                    <span class="setting-desc">浅色 / 深色 / 跟随系统</span>
+                </div>
+                <div class="chip-group" id="themeChips"></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-head">交互偏好</div>
+            <div class="setting-row">
+                <div class="setting-info">
+                    <span class="setting-name">滑动选择分段控制器</span>
+                    <span class="setting-desc">关闭后压缩方式和量化模式仅支持点击切换；开启后可半滑动半吸附拖拽。手机上选项过多时建议关闭。</span>
+                </div>
+                <button class="switch" id="swipeSwitch" onclick="toggleSwipe()">
+                    <span class="switch-knob"></span>
+                </button>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-head">预览偏好</div>
+            <div class="setting-row">
+                <div class="setting-info">
+                    <span class="setting-name">默认展开编码内容</span>
+                    <span class="setting-desc">编码完成后是否自动展开 Base91 码框</span>
+                </div>
+                <button class="switch" id="codeVisibleSwitch" onclick="toggleCodeVisiblePref()">
+                    <span class="switch-knob"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- footer -->
+    <footer class="site-footer">
+        <a href="https://github.com/JiHong-Studio/mc-artmap-encoder" target="_blank" rel="noopener" class="gh-link">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="flex:none"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+        </a>
+    </footer>
+</div>
+
+<script>
+/* =====================================================================
+   PALETTES
+   Block colours are sampled from vanilla textures. Dyed families follow
+   the 16 standard dye order used by Mojang:
+   white, orange, magenta, light blue, yellow, lime, pink, gray,
+   light gray, cyan, purple, blue, brown, green, red, black
+   ===================================================================== */
+const DYE_NAMES = ['白','橙','品红','淡蓝','黄','黄绿','粉','灰','淡灰','青','紫','蓝','棕','绿','红','黑'];
+
+const DYE_SETS = {
+    wool: {
+        label: '羊毛',
+        hex: ['#eaeced','#f17614','#be45b4','#3aafd9','#f9c628','#70b91a','#ee8dac',
+              '#3f4448','#8e8e87','#158a91','#7a2aad','#35399d','#724829','#556e1c',
+              '#a12723','#15151a']
+    },
+    concrete: {
+        label: '混凝土',
+        hex: ['#cfd5d6','#e06101','#a9309f','#2489c7','#f1af15','#5ea919','#d6658f',
+              '#373a3e','#7d7d73','#157788','#64209c','#2d2f8f','#603c20','#495b24',
+              '#8e2121','#080a0f']
+    },
+    terracotta: {
+        label: '陶瓦',
+        hex: ['#d2b1a1','#9d5123','#94566c','#766f8c','#b88221','#677535','#a65151',
+              '#3a2b24','#876b62','#565c5c','#7b4a59','#4a3b5b','#4f3524','#4e552c',
+              '#8d3a2d','#251710']
+    },
+    glass: {
+        label: '玻璃',
+        hex: ['#ffffff','#d87f33','#b24cd8','#6699d8','#e5e533','#7fcc19','#f27fa5',
+              '#4c4c4c','#999999','#4c7f99','#7f3fb2','#334cb2','#664c33','#667f33',
+              '#993333','#191919']
+    }
+};
+
+/* Natural expansion packs — six blocks each, hand-picked so that no two are
+   closer than 400 redmean units to each other or to the common dyed greys. */
+const EXT_SETS = {
+    stone: { label: '石材', blocks: [
+        ['闪长岩', '#bcbcbd'], ['花岗岩', '#968065'], ['深板岩', '#505052'],
+        ['凝灰岩', '#6d6e68'], ['石头',   '#7d7d7d']
+    ]},
+    wood: { label: '木材', blocks: [
+        ['白桦木板', '#c4af79'], ['橡木木板', '#a2824e'], ['丛林木板', '#9c7350'],
+        ['云杉木板', '#72542f'], ['深色橡木', '#432b14'], ['金合欢木', '#a35a32']
+    ]},
+    earth: { label: '泥土系', blocks: [
+        ['沙',     '#dbcfa3'], ['黏土',   '#a4a8b8'], ['泥土', '#866043'],
+        ['沙砾',   '#837f7e'], ['草方块', '#7fb238'], ['雪',   '#f9fefe']
+    ]}
+};
+
+const BASE_ORDER = ['wool', 'concrete', 'terracotta', 'glass'];
+const EXT_ORDER  = ['stone', 'wood', 'earth'];
+
+function hexToRgb(h) {
+    return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+}
+
+/* Perceptual redmean distance — cheap, and far better than plain RGB. */
+function colorDistance(r1, g1, b1, r2, g2, b2) {
+    const rm = (r1 + r2) >> 1;
+    const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+    return ((512 + rm) * dr * dr / 256) + 4 * dg * dg + ((767 - rm) * db * db / 256);
+}
+
+/* Build the active palette.  Near-duplicate entries (<400 apart) are dropped
+   so an index is never wasted on a block that looks identical to another. */
+function buildPalette(baseKeys, extKeys) {
+    const raw = [];
+    // Interleave the dyed families so that when they are combined the
+    // de-duplicated palette keeps a spread across the hue wheel.
+    DYE_NAMES.forEach((_, i) => {
+        for (const b of baseKeys) {
+            const set = DYE_SETS[b];
+            raw.push({ name: set.label + DYE_NAMES[i], rgb: hexToRgb(set.hex[i]), tier: 'base', from: b });
+        }
+    });
+    for (const k of extKeys) {
+        for (const [n, h] of EXT_SETS[k].blocks) {
+            raw.push({ name: n, rgb: hexToRgb(h), tier: 'ext', from: k });
+        }
+    }
+    const pal = [];
+    for (const c of raw) {
+        let dup = false;
+        for (const k of pal) {
+            if (colorDistance(c.rgb[0], c.rgb[1], c.rgb[2], k.rgb[0], k.rgb[1], k.rgb[2]) < 400) {
+                dup = true; break;
+            }
+        }
+        if (!dup) pal.push(c);
+    }
+    return pal;
+}
+
+/* -------------------------- active state -------------------------- */
+let PAL = [];            // active palette
+let NBIT = 4;            // bits per index (auto: 4–7)
+let PAL_BASE = ['wool'];// base material keys (multi)
+let PAL_EXT  = [];      // expansion pack keys (multi)
+let lcube = null;       // 32³ nearest-colour cache, rebuilt per palette
+
+/** Compute the minimum bit width needed to address all palette entries. */
+function bitsForCount(n) {
+    if (n <= 1) return 4;        // never go below 4 for legacy compatibility
+    return Math.max(4, Math.ceil(Math.log2(n)));
+}
+
+/* ----------------------------- LUT ------------------------------- */
+const LB = 5, LS = 1 << LB;
+
+function nearestColor(r, g, b) {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < PAL.length; i++) {   // NOTE: PAL.length, never a literal
+        const w = PAL[i].rgb;
+        const d = colorDistance(r, g, b, w[0], w[1], w[2]);
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+
+function buildLUT() {
+    lcube = new Uint8Array(LS * LS * LS);
+    for (let r = 0; r < LS; r++)
+    for (let g = 0; g < LS; g++)
+    for (let b = 0; b < LS; b++)
+        lcube[(r << 10) | (g << 5) | b] =
+            nearestColor(r << (8 - LB), g << (8 - LB), b << (8 - LB));
+}
+
+function nearestFast(r, g, b) {
+    return lcube[((r >> (8-LB)) << 10) | ((g >> (8-LB)) << 5) | (b >> (8-LB))];
+}
+
+/* =====================================================================
+   SPATIAL COHERENCE QUANTISATION
+   A pixel whose own best match is poor borrows a neighbour's block colour
+   instead of jumping to a wildly different one.  All three gates must pass,
+   which is what keeps clean areas clean.
+   ===================================================================== */
+function quantizeCoherent(px, w, h, indices) {
+    const N = w * h;
+    const SIM         = 1500;  // source colours this close → similar
+    const MOD_SIM     = 4000;  // moderately similar …
+    const WELL_MATCH  = 800;   // … allowed only if the neighbour matches well
+    const ERR_GATE    = 2200;  // only touch pixels whose own match is poor
+    const TOLERANCE   = 1.12;  // borrowed colour must stay within this factor
+
+    const errors = new Float32Array(N);
+
+    // Pass 1 — exact nearest neighbour + error, so the LUT's quantisation
+    // noise can never be amplified by pass 2.
+    for (let p = 0; p < N; p++) {
+        const i = p << 2;
+        const r = px[i], g = px[i+1], b = px[i+2];
+        let best = 0, bestD = Infinity;
+        for (let k = 0; k < PAL.length; k++) {
+            const wc = PAL[k].rgb;
+            const d = colorDistance(r, g, b, wc[0], wc[1], wc[2]);
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        indices[p] = best;
+        errors[p] = bestD;
+    }
+
+    // Pass 2 — borrow from left/top when it genuinely helps.
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const p = y * w + x;
+            if (errors[p] <= ERR_GATE) continue;        // already a fine match
+
+            const i = p << 2;
+            const r = px[i], g = px[i+1], b = px[i+2];
+            const ownErr = errors[p];
+
+            let bestIdx = indices[p];
+            // Start the ceiling at ownErr × TOLERANCE, NOT at ownErr —
+            // otherwise no other colour could ever win and the check is dead.
+            let bestCand = ownErr * TOLERANCE;
+
+            const tryNeighbour = (np) => {
+                if (indices[np] === bestIdx) return;
+                const ni = np << 2;
+                const srcDist = colorDistance(r, g, b, px[ni], px[ni+1], px[ni+2]);
+                const allowed = srcDist < SIM ||
+                                (srcDist < MOD_SIM && errors[np] < WELL_MATCH);
+                if (!allowed) return;
+                const wc = PAL[indices[np]].rgb;
+                const d = colorDistance(r, g, b, wc[0], wc[1], wc[2]);
+                if (d < bestCand) { bestCand = d; bestIdx = indices[np]; }
+            };
+
+            if (x > 0) tryNeighbour(p - 1);    // left
+            if (y > 0) tryNeighbour(p - w);    // top
+
+            if (bestIdx !== indices[p]) {
+                indices[p] = bestIdx;
+                errors[p]  = bestCand;
+            }
+        }
+    }
+}
+
+/* =====================================================================
+   BIT PACKING
+   MSB-first stream, no padding waste beyond the final byte.
+   ===================================================================== */
+function packIndices(indices, nbit) {
+    const N = indices.length;
+    const out = new Uint8Array(Math.ceil(N * nbit / 8));
+    let bitPos = 0;
+    for (let i = 0; i < N; i++) {
+        const v = indices[i] & ((1 << nbit) - 1);
+        for (let b = nbit - 1; b >= 0; b--) {
+            if ((v >> b) & 1) out[bitPos >> 3] |= 0x80 >> (bitPos & 7);
+            bitPos++;
+        }
+    }
+    return out;
+}
+
+function unpackIndices(packed, N, nbit) {
+    const indices = new Uint8Array(N);
+    let bitPos = 0;
+    for (let i = 0; i < N; i++) {
+        let v = 0;
+        for (let b = 0; b < nbit; b++) {
+            v = (v << 1) | ((packed[bitPos >> 3] >> (7 - (bitPos & 7))) & 1);
+            bitPos++;
+        }
+        indices[i] = v;
+    }
+    return indices;
+}
+
+/* =====================================================================
+   BASE91
+   ===================================================================== */
+const B91C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~"';
+const B91D = new Int32Array(256).fill(-1);
+for (let i = 0; i < 91; i++) B91D[B91C.charCodeAt(i)] = i;
+
+function b91encode(data) {
+    let r = '', b = 0, n = 0;
+    for (let i = 0; i < data.length; i++) {
+        b |= data[i] << n;
+        n += 8;
+        if (n > 13) {
+            let v = b & 8191;
+            if (v > 88) { b >>>= 13; n -= 13; }
+            else { v = b & 16383; b >>>= 14; n -= 14; }
+            r += B91C[v % 91] + B91C[(v / 91) | 0];
+        }
+    }
+    if (n) {
+        r += B91C[b % 91];
+        if (n > 7 || b > 90) r += B91C[(b / 91) | 0];
+    }
+    return r;
+}
+
+function b91decode(str) {
+    const out = [];
+    let b = 0, n = 0, v = -1;
+    for (let i = 0; i < str.length; i++) {
+        const c = B91D[str.charCodeAt(i)];
+        if (c === -1) continue;
+        if (v < 0) { v = c; }
+        else {
+            v += c * 91;
+            b |= v << n;
+            n += (v & 8191) > 88 ? 13 : 14;
+            while (n > 7) { out.push(b & 0xFF); b >>>= 8; n -= 8; }
+            v = -1;
+        }
+    }
+    if (v >= 0) out.push((b | (v << n)) & 0xFF);
+    return new Uint8Array(out);
+}
+
+/* =====================================================================
+   PACKBITS RLE
+   ===================================================================== */
+function packbitsEncode(data) {
+    const out = [];
+    const len = data.length;
+    let i = 0;
+    while (i < len) {
+        let run = 1;
+        while (i + run < len && data[i + run] === data[i] && run < 128) run++;
+        if (run >= 3) {
+            out.push((257 - run) & 0xFF, data[i]);
+            i += run;
+        } else {
+            const start = i;
+            while (i < len) {
+                if (i + 2 < len && data[i] === data[i+1] && data[i+1] === data[i+2]) break;
+                i++;
+                if (i - start >= 128) break;
+            }
+            out.push(i - start - 1);
+            for (let j = start; j < i; j++) out.push(data[j]);
+        }
+    }
+    return new Uint8Array(out);
+}
+
+function packbitsDecode(data) {
+    const out = [];
+    let i = 0;
+    while (i < data.length) {
+        const count = data[i];
+        if (count <= 127) {
+            const n = count + 1;
+            for (let j = 0; j < n; j++) out.push(data[i + 1 + j]);
+            i += 1 + n;
+        } else if (count > 128) {
+            const n = 257 - count;
+            const val = data[i + 1];
+            for (let j = 0; j < n; j++) out.push(val);
+            i += 2;
+        } else {
+            i++;   // 128 = no-op
+        }
+    }
+    return new Uint8Array(out);
+}
+
+/* =====================================================================
+   DEFLATE (native CompressionStream)
+   ===================================================================== */
+const HAS_DEFLATE = typeof CompressionStream !== 'undefined';
+
+async function deflateRaw(data) {
+    const stream = new Blob([data]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function inflateRaw(data) {
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+const METHOD_NAMES = { 0: '无压缩', 1: 'RLE', 2: 'Deflate', 3: 'RLE+Deflate' };
+
+async function compress(packed, method) {
+    switch (method) {
+        case 0: return packed;
+        case 1: return packbitsEncode(packed);
+        case 2: return await deflateRaw(packed);
+        case 3: return await deflateRaw(packbitsEncode(packed));
+    }
+}
+
+async function decompress(payload, method) {
+    switch (method) {
+        case 0: return payload;
+        case 1: return packbitsDecode(payload);
+        case 2: return await inflateRaw(payload);
+        case 3: return packbitsDecode(await inflateRaw(payload));
+        default: throw new Error('未知压缩方法: ' + method);
+    }
+}
+
+/* =====================================================================
+   STREAM FORMAT
+   Current (version 1):
+     [0]     version = 1
+     [1]     baseMask: bit0 wool, bit1 concrete, bit2 terracotta, bit3 glass
+     [2]     extMask : bit0 stone, bit1 wood, bit2 earth
+     [3]     nbit    : 4–7 (auto, based on palette size)
+     [4..5]  width   (2B BE)
+     [6..7]  height  (2B BE)
+     [8]     method
+     [9..]   payload
+
+   Legacy (no version byte): [wHi][wLo][hHi][hLo][method][payload], 4-bit wool.
+   A legacy width high byte is 0 for images under 256px, while our version
+   byte is 1, so the two are unambiguous.
+   ===================================================================== */
+const BASE_BIT   = { wool: 0, concrete: 1, terracotta: 2, glass: 3 };
+const BASE_BY_BIT = ['wool', 'concrete', 'terracotta', 'glass'];
+
+/* =====================================================================
+   ENCODE
+   ===================================================================== */
+async function processImage() {
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) { alert('请先选择图片'); return; }
+
+    const btn = document.getElementById('encodeBtn');
+    btn.classList.add('loading');
+    btn.textContent = '处理中…';
+
+    try {
+        const img = await new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = URL.createObjectURL(file);
+        });
+
+        // Read the live config.
+        const cfg = readConfigFromUI();
+        const maxDim = cfg.maxDim;
+        const dither = cfg.mode === 'dither';
+        const coherence = cfg.mode === 'coherence';
+        const compSel = cfg.comp;
+
+
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+            const scale = maxDim / Math.max(w, h);
+            w = Math.max(1, Math.round(w * scale));
+            h = Math.max(1, Math.round(h * scale));
+        }
+
+        // --- draw & read source ---
+        const cO = document.getElementById('canvasOriginal');
+        cO.width = w; cO.height = h;
+        const xO = cO.getContext('2d');
+        xO.drawImage(img, 0, 0, w, h);
+        const px = xO.getImageData(0, 0, w, h).data;
+
+        const N = w * h;
+        const indices = new Uint8Array(N);
+
+        // --- quantise ---
+        if (dither) {
+            const buf = new Float32Array(N * 3);
+            for (let i = 0, j = 0; i < px.length; i += 4, j += 3) {
+                buf[j] = px[i]; buf[j+1] = px[i+1]; buf[j+2] = px[i+2];
+            }
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const pi = (y * w + x) * 3;
+                    const ci = nearestFast(
+                        Math.max(0, Math.min(255, buf[pi])),
+                        Math.max(0, Math.min(255, buf[pi+1])),
+                        Math.max(0, Math.min(255, buf[pi+2]))
+                    );
+                    indices[y * w + x] = ci;
+                    const wc = PAL[ci].rgb;
+                    const eR = buf[pi]   - wc[0];
+                    const eG = buf[pi+1] - wc[1];
+                    const eB = buf[pi+2] - wc[2];
+                    if (x + 1 < w) {
+                        buf[pi + 3] += eR * 0.4375;
+                        buf[pi + 4] += eG * 0.4375;
+                        buf[pi + 5] += eB * 0.4375;
+                    }
+                    if (y + 1 < h) {
+                        if (x > 0) {
+                            const bl = pi + w * 3 - 3;
+                            buf[bl]     += eR * 0.1875;
+                            buf[bl + 1] += eG * 0.1875;
+                            buf[bl + 2] += eB * 0.1875;
+                        }
+                        const bn = pi + w * 3;
+                        buf[bn]     += eR * 0.3125;
+                        buf[bn + 1] += eG * 0.3125;
+                        buf[bn + 2] += eB * 0.3125;
+                        if (x + 1 < w) {
+                            const br = pi + w * 3 + 3;
+                            buf[br]     += eR * 0.0625;
+                            buf[br + 1] += eG * 0.0625;
+                            buf[br + 2] += eB * 0.0625;
+                        }
+                    }
+                }
+            }
+        } else if (coherence) {
+            quantizeCoherent(px, w, h, indices);
+        } else {
+            for (let i = 0, p = 0; i < px.length; i += 4, p++) {
+                indices[p] = nearestFast(px[i], px[i+1], px[i+2]);
+            }
+        }
+
+        // --- preview ---
+        const cQ = document.getElementById('canvasQuantized');
+        cQ.width = w; cQ.height = h;
+        const xQ = cQ.getContext('2d');
+        const qd = xQ.createImageData(w, h);
+        for (let i = 0, p = 0; i < qd.data.length; i += 4, p++) {
+            const c = PAL[indices[p]].rgb;
+            qd.data[i] = c[0]; qd.data[i+1] = c[1]; qd.data[i+2] = c[2]; qd.data[i+3] = 255;
+        }
+        xQ.putImageData(qd, 0, 0);
+
+        // --- pack, compress, wrap ---
+        const packed = packIndices(indices, NBIT);
+        const packedSize = packed.length;
+
+        let method, payload;
+        if (compSel === 'auto') {
+            const candidates = [0, 1];
+            if (HAS_DEFLATE) candidates.push(2, 3);
+            let best = packed, bm = 0, bs = packed.length;
+            for (const m of candidates) {
+                try {
+                    const r = await compress(packed, m);
+                    if (r.length < bs) { bs = r.length; best = r; bm = m; }
+                } catch (e) { /* method unavailable */ }
+            }
+            method = bm; payload = best;
+        } else {
+            method = parseInt(compSel);
+            payload = await compress(packed, method);
+        }
+
+        let extMask = 0;
+        PAL_EXT.forEach(k => { extMask |= 1 << EXT_ORDER.indexOf(k); });
+        let baseMask = 0;
+        PAL_BASE.forEach(k => { baseMask |= 1 << BASE_BIT[k]; });
+        if (!baseMask) baseMask = 1;   // safety: at least wool
+        const raw = new Uint8Array(9 + payload.length);
+        raw[0] = 1;
+        raw[1] = baseMask;
+        raw[2] = extMask;
+        raw[3] = NBIT;
+        raw[4] = (w >> 8) & 0xFF; raw[5] = w & 0xFF;
+        raw[6] = (h >> 8) & 0xFF; raw[7] = h & 0xFF;
+        raw[8] = method;
+        payload.forEach((v, i) => raw[9 + i] = v);
+
+        const encoded = b91encode(raw);
+        document.getElementById('base91Output').value = encoded;
+
+        // --- headline: character count + byte size ---
+        document.getElementById('charCount').textContent = encoded.length.toLocaleString();
+        document.getElementById('charBytes').textContent =
+            (encoded.length / 1024).toFixed(1) + ' KB · ' + payload.length + ' B 压缩';
+        document.getElementById('copyBtn').disabled = false;
+        document.getElementById('outputPanel').classList.add('has-result');
+        document.body.classList.add('has-result');
+
+        // Mobile: collapse params so the result takes the spotlight
+        updateParamSummary();
+        collapseParams();
+
+        // --- stats (bottom) ---
+        const ratio = packedSize ? (payload.length / packedSize * 100).toFixed(1) : '0';
+        const palDesc = paletteLabel();
+        document.getElementById('stats').innerHTML =
+            item('原始文件', (file.size/1024).toFixed(1) + ' KB') +
+            item('分辨率', w + '×' + h) +
+            item('像素', N) +
+            item('调色板', palDesc + ' · ' + PAL.length + ' 色 / ' + NBIT + ' bit') +
+            item('打包数据', packedSize + ' B') +
+            item('压缩方式', METHOD_NAMES[method] + (compSel === 'auto' ? '（自动）' : '')) +
+            item('压缩后', payload.length + ' B（' + ratio + '%）');
+    } catch (err) {
+        alert('处理失败: ' + err.message);
+        console.error(err);
+    } finally {
+        btn.classList.remove('loading');
+        btn.textContent = '量化 & 编码';
+    }
+}
+
+function item(label, value, accent) {
+    return `<span class="item${accent ? ' accent' : ''}">${label} <b>${value}</b></span>`;
+}
+
+/* =====================================================================
+   DECODE
+   ===================================================================== */
+async function decodeImage() {
+    const str = document.getElementById('base91Input').value.trim();
+    if (!str) { alert('请粘贴 Base91 字符串'); return; }
+
+    try {
+        const bytes = b91decode(str);
+        if (bytes.length < 6) { alert('数据过短，无法解码'); return; }
+
+        let w, h, method, nbit, payload, palBases = [], palExt = [];
+
+        if (bytes[0] === 1 && bytes.length >= 10) {
+            // ----- version 1 -----
+            const baseMask = bytes[1], extMask = bytes[2];
+            BASE_BY_BIT.forEach((k, i) => { if (baseMask & (1 << i)) palBases.push(k); });
+            if (!palBases.length) palBases.push('wool');
+            EXT_ORDER.forEach((k, i) => { if (extMask & (1 << i)) palExt.push(k); });
+            nbit    = bytes[3] >= 4 ? bytes[3] : 4;
+            w       = (bytes[4] << 8) | bytes[5];
+            h       = (bytes[6] << 8) | bytes[7];
+            method  = bytes[8];
+            payload = bytes.slice(9);
+        } else {
+            // ----- legacy 16-colour wool -----
+            palBases = ['wool'];
+            nbit    = 4;
+            w       = (bytes[0] << 8) | bytes[1];
+            h       = (bytes[2] << 8) | bytes[3];
+            method  = bytes[4];
+            payload = bytes.slice(5);
+        }
+
+        if (!w || !h) { alert('无效尺寸: ' + w + '×' + h); return; }
+        if (w > 8192 || h > 8192) { alert('尺寸过大: ' + w + '×' + h); return; }
+
+        // Switch palette before rendering so indices map to the right blocks.
+        if (palBases.length) {
+            const cur = PAL_BASE.join(',') + '|' + PAL_EXT.join(',');
+            const want = palBases.join(',') + '|' + palExt.join(',');
+            if (want !== cur) {
+                CFG.bases = palBases.slice();
+                CFG.exts = palExt.slice();
+                setPalette(palBases, palExt);
+                renderAllChips();
+                saveConfig();
+            }
+        }
+
+        const packed = await decompress(payload, method);
+        const N = w * h;
+        const need = Math.ceil(N * nbit / 8);
+        if (packed.length < need) {
+            alert('数据不完整：需要 ' + need + ' 字节，实际 ' + packed.length);
+            return;
+        }
+        const indices = unpackIndices(packed, N, nbit);
+
+        const c = document.getElementById('canvasDecoded');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        const id = ctx.createImageData(w, h);
+        for (let i = 0; i < N; i++) {
+            const col = (PAL[indices[i]] || PAL[0]).rgb;
+            id.data[i*4]   = col[0];
+            id.data[i*4+1] = col[1];
+            id.data[i*4+2] = col[2];
+            id.data[i*4+3] = 255;
+        }
+        ctx.putImageData(id, 0, 0);
+
+        document.getElementById('decodeStats').innerHTML =
+            item('分辨率', w + '×' + h) +
+            item('像素', N) +
+            item('位深', nbit + ' bit') +
+            item('调色板', palBases.length > 1 || palExt.length ? paletteLabel() : '羊毛（旧格式）', true);
+    } catch (err) {
+        alert('解码失败: ' + err.message);
+        console.error(err);
+    }
+}
+
+/* =====================================================================
+   PALETTE STATE & UI
+   ===================================================================== */
+function paletteLabel() {
+    const base = PAL_BASE.map(k => DYE_SETS[k].label).join('+') || '羊毛';
+    return PAL_EXT.length
+        ? base + ' + ' + PAL_EXT.map(k => EXT_SETS[k].label).join(' + ')
+        : base;
+}
+
+function setPalette(baseKeys, extKeys) {
+    PAL_BASE = baseKeys.slice();
+    PAL_EXT = extKeys.slice();
+    PAL = buildPalette(PAL_BASE, PAL_EXT);
+    NBIT = bitsForCount(PAL.length);
+    buildLUT();
+    renderPalette();
+    renderPaletteLive();
+}
+
+/* =====================================================================
+   CONFIG: state, chips UI, persistence
+   ===================================================================== */
+const STORAGE_KEY = 'mc-encoder-config-v2';
+
+const COMP_OPTIONS = [
+    { value: 'auto', label: '自动' },
+    { value: '0',    label: '无压缩' },
+    { value: '1',    label: 'RLE' },
+    { value: '2',    label: 'Deflate' },
+    { value: '3',    label: 'RLE+Deflate' },
+];
+
+/* Single source of truth for everything the user can tune. */
+const CFG = {
+    bases: ['wool'],
+    exts: [],
+    maxDim: 1280,
+    comp: 'auto',
+    mode: 'coherence',
+    previewLayout: 'side',
+    codeVisible: false,
+    swipeSegment: false,
+    theme: 'auto',
+};
+
+function defaultConfig() {
+    return {
+        bases: ['wool'],
+        exts: [],
+        maxDim: 1280,
+        comp: 'auto',
+        mode: 'coherence',
+        previewLayout: 'side',
+        codeVisible: false,
+        swipeSegment: false,
+        theme: 'auto',
+    };
+}
+
+function sanitiseConfig(c) {
+    const d = defaultConfig();
+    if (!c || typeof c !== 'object') return d;
+    const bases = Array.isArray(c.bases)
+        ? c.bases.filter(k => k in DYE_SETS)
+        : d.bases;
+    const exts = Array.isArray(c.exts)
+        ? c.exts.filter(k => k in EXT_SETS)
+        : d.exts;
+    let maxDim = parseInt(c.maxDim, 10);
+    if (!Number.isFinite(maxDim)) maxDim = d.maxDim;
+    maxDim = Math.max(1, Math.min(8192, maxDim));
+    const comp = COMP_OPTIONS.some(o => o.value === c.comp) ? c.comp : d.comp;
+    // Migrate old coherence/dither booleans → mode string
+    let mode = c.mode;
+    if (!mode || !['direct', 'coherence', 'dither'].includes(mode)) {
+        if (c.dither === true) mode = 'dither';
+        else if (c.coherence === false) mode = 'direct';
+        else mode = d.mode;
+    }
+    return {
+        bases: bases.length ? bases : d.bases,
+        exts,
+        maxDim,
+        comp,
+        mode,
+        previewLayout: c.previewLayout === 'stack' ? 'stack' : 'side',
+        codeVisible: c.codeVisible === true,
+        swipeSegment: c.swipeSegment === true,
+        theme: ['light', 'dark', 'auto'].includes(c.theme) ? c.theme : 'auto',
+    };
+}
+
+function saveConfig() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(CFG));
+    } catch (e) {
+        // Private mode / quota — silently keep working without persistence.
+        console.warn('配置保存失败', e);
+    }
+}
+
+function loadConfig() {
+    let raw = null;
+    try {
+        raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+        return defaultConfig();
+    }
+    if (!raw) return defaultConfig();
+    try {
+        return sanitiseConfig(JSON.parse(raw));
+    } catch (e) {
+        return defaultConfig();
+    }
+}
+
+function readConfigFromUI() {
+    return {
+        bases: CFG.bases.slice(),
+        exts: CFG.exts.slice(),
+        maxDim: parseInt(document.getElementById('maxDim').value, 10) || 1280,
+        comp: CFG.comp,
+        mode: CFG.mode,
+        previewLayout: CFG.previewLayout,
+        codeVisible: CFG.codeVisible,
+        swipeSegment: CFG.swipeSegment,
+        theme: CFG.theme,
+    };
+}
+
+/* --------------------------- chips --------------------------- */
+function buildChips(containerId, items, selected, onToggle, { exclusive = false } = {}) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '';
+    items.forEach(it => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chip' + (selected.includes(it.value) ? ' on' : '');
+        btn.dataset.value = it.value;
+        if (it.title) btn.title = it.title;
+        btn.innerHTML =
+            (it.dot ? '<span class="chip-dot" style="background:' + it.dot + '"></span>' : '') +
+            '<span>' + it.label + '</span>';
+        btn.addEventListener('click', () => onToggle(it.value, btn));
+        el.appendChild(btn);
+    });
+}
+
+function baseChipItems() {
+    return BASE_ORDER.map(k => ({
+        value: k,
+        label: DYE_SETS[k].label,
+        dot: DYE_SETS[k].hex[0],
+        title: '与其他材质混用会消耗更多颜色名额',
+    }));
+}
+
+function extChipItems() {
+    return EXT_ORDER.map(k => ({
+        value: k,
+        label: EXT_SETS[k].label,
+        title: EXT_SETS[k].blocks.map(b => b[0]).join('、'),
+    }));
+}
+
+function renderAllChips() {
+    buildChips('baseChips', baseChipItems(), CFG.bases, toggleBase);
+    buildChips('extChips', extChipItems(), CFG.exts, toggleExt);
+    // Single-select params use the half-swipe segmented controller
+    _segComp = buildSegment('compChips',
+        COMP_OPTIONS.map(o => ({ value: o.value, label: o.label })),
+        CFG.comp,
+        (v) => { CFG.comp = v; saveConfig(); rerunIfLoaded(); }
+    );
+    _segMode = buildSegment('optChips',
+        MODE_OPTIONS,
+        CFG.mode,
+        (v) => { CFG.mode = v; updateParamSummary(); saveConfig(); rerunIfLoaded(); }
+    );
+}
+
+function toggleBase(value) {
+    const i = CFG.bases.indexOf(value);
+    if (i >= 0) {
+        if (CFG.bases.length === 1) return;   // keep at least one material
+        CFG.bases.splice(i, 1);
+    } else {
+        CFG.bases.push(value);
+    }
+    applyConfigChange();
+}
+
+function toggleExt(value) {
+    const i = CFG.exts.indexOf(value);
+    if (i >= 0) CFG.exts.splice(i, 1);
+    else CFG.exts.push(value);
+    applyConfigChange();
+}
+
+const MODE_OPTIONS = [
+    { value: 'direct',    label: '直接' },
+    { value: 'coherence', label: '一致性' },
+    { value: 'dither',    label: '抖动' },
+];
+
+/* ---- segmented controller (half-swipe / half-snap) ---- */
+let _segComp = null, _segMode = null;
+
+function buildSegment(containerId, options, currentValue, onSelect) {
+    const container = document.getElementById(containerId);
+    if (!container) return null;
+    container.innerHTML = '';
+    container.className = 'segment';
+
+    const indicator = document.createElement('div');
+    indicator.className = 'seg-indicator';
+    container.appendChild(indicator);
+
+    const opts = [];
+    options.forEach((opt) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'seg-opt' + (opt.value === currentValue ? ' on' : '');
+        btn.dataset.value = opt.value;
+        btn.textContent = opt.label;
+        container.appendChild(btn);
+        opts.push(btn);
+    });
+
+    let value = currentValue;
+    let isDragging = false;
+    let startX = null;
+    let startIdx = 0;
+    let snapIdx = 0;
+
+    function positions() {
+        return opts.map(o => ({ left: o.offsetLeft, width: o.offsetWidth }));
+    }
+
+    function scrollOptionIntoView(idx, smooth) {
+        const opt = opts[idx];
+        if (!opt) return;
+        const left = opt.offsetLeft;
+        const right = left + opt.offsetWidth;
+        const viewLeft = container.scrollLeft;
+        const viewRight = viewLeft + container.clientWidth;
+        if (left < viewLeft + 4) {
+            container.scrollTo({ left: Math.max(0, left - 6), behavior: smooth ? 'smooth' : 'auto' });
+        } else if (right > viewRight - 4) {
+            container.scrollTo({ left: right - container.clientWidth + 6, behavior: smooth ? 'smooth' : 'auto' });
+        }
+    }
+
+    function moveIndicator(val, animate) {
+        const idx = options.findIndex(o => o.value === val);
+        if (idx < 0) return;
+        const pos = positions()[idx];
+        if (!pos) return;
+        indicator.classList.toggle('dragging', !animate);
+        indicator.style.transform = 'translateX(' + pos.left + 'px)';
+        indicator.style.width = pos.width + 'px';
+        opts.forEach((e, i) => e.classList.toggle('on', i === idx));
+        scrollOptionIntoView(idx, animate);
+    }
+
+    requestAnimationFrame(() => moveIndicator(value, false));
+
+    opts.forEach((btn, i) => {
+        btn.addEventListener('click', () => {
+            if (isDragging) return;
+            if (options[i].value === value) return;
+            value = options[i].value;
+            moveIndicator(value, true);
+            onSelect(value);
+        });
+    });
+
+    // ---- half-swipe / half-snap (only when enabled) ----
+    if (CFG.swipeSegment) {
+        container.classList.add('swipe-on');
+    }
+
+    container.addEventListener('pointerdown', (e) => {
+        if (!CFG.swipeSegment) return;
+        isDragging = false;
+        startX = e.clientX;
+        startIdx = options.findIndex(o => o.value === value);
+        snapIdx = startIdx;
+        indicator.classList.add('dragging');
+        e.preventDefault();
+    });
+
+    const onMove = (e) => {
+        if (startX === null) return;
+        const dx = e.clientX - startX;
+        if (Math.abs(dx) < 4) return;
+        isDragging = true;
+        const pos = positions();
+        const startLeft = pos[startIdx].left;
+        let target = startLeft + dx;
+        target = Math.max(0, Math.min(pos[pos.length - 1].left, target));
+        let nearest = startIdx, minD = Infinity;
+        pos.forEach((p, i) => {
+            const d = Math.abs(p.left - target);
+            if (d < minD) { minD = d; nearest = i; }
+        });
+        snapIdx = nearest;
+        indicator.style.transform = 'translateX(' + target + 'px)';
+        indicator.style.width = pos[snapIdx].width + 'px';
+        opts.forEach((el, i) => el.classList.toggle('on', i === snapIdx));
+        // Auto-scroll container to follow the indicator during drag
+        const indicatorRight = target + pos[snapIdx].width;
+        const viewRight = container.scrollLeft + container.clientWidth;
+        if (indicatorRight > viewRight - 4) {
+            container.scrollLeft = indicatorRight - container.clientWidth + 6;
+        } else if (target < container.scrollLeft + 4) {
+            container.scrollLeft = Math.max(0, target - 6);
+        }
+    };
+
+    const onUp = () => {
+        if (startX === null) return;
+        const dragged = isDragging;
+        startX = null;
+        indicator.classList.remove('dragging');
+        if (dragged && snapIdx !== startIdx) {
+            value = options[snapIdx].value;
+            moveIndicator(value, true);
+            onSelect(value);
+        } else if (dragged) {
+            moveIndicator(value, true);
+        }
+        if (dragged) {
+            setTimeout(() => { isDragging = false; }, 100);
+        } else {
+            isDragging = false;
+        }
+    };
+
+    // Attach to window so the drag continues even when the pointer
+    // leaves the container (critical for touch devices).
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', () => {
+        startX = null; isDragging = false;
+        indicator.classList.remove('dragging');
+        moveIndicator(value, true);
+    });
+
+    window.addEventListener('resize', () => moveIndicator(value, false));
+
+    return { setValue: (v) => { value = v; moveIndicator(v, true); } };
+}
+
+/* Apply CFG to the palette engine and refresh dependent UI. */
+function applyConfigChange() {
+    setPalette(CFG.bases, CFG.exts);
+    renderAllChips();
+    updateParamSummary();
+    saveConfig();
+    rerunIfLoaded();
+}
+
+function rerunIfLoaded() {
+    const fi = document.getElementById('fileInput');
+    if (fi.files && fi.files[0]) processImage();
+}
+
+/* Kept for decode: restore a palette described by an incoming stream. */
+function applyPaletteSelection(baseKey, extKeys) {
+    CFG.bases = baseKey ? [baseKey] : ['wool'];
+    CFG.exts = extKeys.slice();
+    setPalette(CFG.bases, CFG.exts);
+    renderAllChips();
+    saveConfig();
+}
+
+function onPaletteChange() {
+    // legacy entry point kept harmless
+    applyConfigChange();
+}
+
+function renderPalette() {
+    const el = document.getElementById('palette');
+    el.innerHTML = '';
+    PAL.forEach(c => {
+        const s = document.createElement('div');
+        s.className = 'color-swatch' + (c.tier === 'base' ? ' basic' : '');
+        s.style.background = `rgb(${c.rgb[0]},${c.rgb[1]},${c.rgb[2]})`;
+        const tip = document.createElement('span');
+        tip.className = 'tip';
+        tip.textContent = c.name;
+        s.appendChild(tip);
+        el.appendChild(s);
+    });
+    document.getElementById('paletteMeta').textContent =
+        PAL.length + ' 色 · ' + NBIT + ' bit' +
+        (PAL_EXT.length ? ' · 扩展 ' + PAL_EXT.length : '');
+}
+
+/* Live feedback while picking: how many colours, what bit depth. */
+function renderPaletteLive() {
+    const el = document.getElementById('paletteLive');
+    if (!el) return;
+    const n = PAL.length;
+    const nb = NBIT;
+    const maxN = (1 << nb);
+    const pct = Math.min(100, n / maxN * 100);
+    const msg = nb + ' bit 索引 · 可容纳 ' + maxN + ' 色';
+    el.className = 'palette-live';
+    el.innerHTML =
+        '<span class="pl-count">' + n + ' 色</span>' +
+        '<span class="pl-bar"><span class="pl-fill" style="width:' + pct + '%"></span></span>' +
+        '<span>' + msg + '</span>';
+}
+
+/* =====================================================================
+   MISC UI
+   ===================================================================== */
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('tab-encode').classList.toggle('hidden', tab !== 'encode');
+    document.getElementById('tab-decode').classList.toggle('hidden', tab !== 'decode');
+    document.getElementById('tab-prefs').classList.toggle('hidden', tab !== 'prefs');
+}
+
+/* ---------------------- mobile param collapse ---------------------- */
+const IS_MOBILE = () => window.matchMedia('(max-width: 620px)').matches;
+
+function toggleParams() {
+    const block = document.getElementById('controlsBlock');
+    const btn = document.getElementById('paramToggle');
+    const willOpen = block.classList.contains('collapsed');
+    block.classList.toggle('collapsed', !willOpen);
+    btn.classList.toggle('open', willOpen);
+}
+
+function collapseParams() {
+    if (!IS_MOBILE()) return;
+    const block = document.getElementById('controlsBlock');
+    const btn = document.getElementById('paramToggle');
+    if (!block.classList.contains('collapsed')) {
+        block.classList.add('collapsed');
+        btn.classList.remove('open');
+    }
+    updateParamSummary();
+}
+
+function updateParamSummary() {
+    const baseText = CFG.bases.map(k => DYE_SETS[k].label).join('+');
+    const extText = CFG.exts.length ? ' + ' + CFG.exts.map(k => EXT_SETS[k].label).join(' + ') : '';
+    const dim = document.getElementById('maxDim');
+    const modeLabel = { direct: '直接', coherence: '一致性', dither: '抖动' }[CFG.mode] || '一致性';
+    document.getElementById('paramSummary').textContent =
+        baseText + extText + ' · ' + (dim.value || '?') + 'px · ' + modeLabel;
+}
+
+/* ---------------------- lightbox ---------------------- */
+function openLightbox(canvasId) {
+    const src = document.getElementById(canvasId);
+    if (!src || !src.width) return;
+    const lb = document.getElementById('lightbox');
+    const cv = document.getElementById('lightboxCanvas');
+    const title = document.getElementById('lbTitle');
+    // Set title from the sibling h3
+    const cell = src.closest('.preview-cell');
+    title.textContent = cell ? cell.querySelector('h3').textContent : '';
+    // Copy pixels at native resolution
+    cv.width = src.width;
+    cv.height = src.height;
+    cv.getContext('2d').drawImage(src, 0, 0);
+    lb.classList.add('open');
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLightbox();
+});
+
+/* ---------------------- preview layout toggle ---------------------- */
+function setPreviewLayout(layout) {
+    const pair = document.getElementById('previewPair');
+    pair.classList.toggle('stack', layout === 'stack');
+    // Update toggle buttons
+    document.querySelectorAll('#layoutToggle .lt-btn').forEach(btn => {
+        btn.classList.toggle('on', btn.dataset.layout === layout);
+    });
+    // Persist
+    CFG.previewLayout = layout;
+    saveConfig();
+}
+
+/* ---------------------- code visibility toggle ---------------------- */
+function toggleCode() {
+    const ta = document.getElementById('base91Output');
+    const btn = document.getElementById('codeToggle');
+    const willShow = !ta.classList.contains('shown');
+    ta.classList.toggle('shown', willShow);
+    btn.classList.toggle('open', willShow);
+    btn.querySelector('.ct-text').textContent = willShow ? '隐藏编码内容' : '显示编码内容';
+    CFG.codeVisible = willShow;
+    saveConfig();
+}
+
+function applyCodeVisibility() {
+    const ta = document.getElementById('base91Output');
+    const btn = document.getElementById('codeToggle');
+    const show = CFG.codeVisible === true;
+    ta.classList.toggle('shown', show);
+    btn.classList.toggle('open', show);
+    btn.querySelector('.ct-text').textContent = show ? '隐藏编码内容' : '显示编码内容';
+}
+
+/* ---------------------- prefs tab switches ---------------------- */
+const THEME_OPTIONS = [
+    { value: 'light', label: '浅色' },
+    { value: 'dark',  label: '深色' },
+    { value: 'auto',  label: '跟随系统' },
+];
+let _segTheme = null;
+
+function resolveTheme(theme) {
+    if (theme === 'auto') {
+        return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return theme;
+}
+
+function applyTheme() {
+    document.documentElement.setAttribute('data-theme', resolveTheme(CFG.theme));
+}
+
+// Listen for system theme changes when in auto mode
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (CFG.theme === 'auto') applyTheme();
+});
+
+function toggleSwipe() {
+    CFG.swipeSegment = !CFG.swipeSegment;
+    const sw = document.getElementById('swipeSwitch');
+    sw.classList.toggle('on', CFG.swipeSegment);
+    saveConfig();
+    // Rebuild segments so pointer listeners are attached/detached
+    renderAllChips();
+}
+
+function toggleCodeVisiblePref() {
+    CFG.codeVisible = !CFG.codeVisible;
+    const sw = document.getElementById('codeVisibleSwitch');
+    sw.classList.toggle('on', CFG.codeVisible);
+    saveConfig();
+    applyCodeVisibility();
+}
+
+function applyPrefsSwitches() {
+    document.getElementById('swipeSwitch').classList.toggle('on', CFG.swipeSegment);
+    document.getElementById('codeVisibleSwitch').classList.toggle('on', CFG.codeVisible);
+}
+
+function copyOutput(e) {
+    const ta = document.getElementById('base91Output');
+    const text = ta.value;
+    if (!text) {
+        alert('还没有编码结果');
+        return;
+    }
+    const btn = document.getElementById('copyBtn') || (e && e.target);
+    const flash = () => {
+        if (!btn) return;
+        btn.classList.add('copied');
+        btn.textContent = '✓ 已复制 ' + text.length.toLocaleString() + ' 字符';
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.textContent = '复制';
+        }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(flash, () => {
+            ta.select();
+            document.execCommand('copy');
+            flash();
+        });
+    } else {
+        ta.select();
+        document.execCommand('copy');
+        flash();
+    }
+}
+
+function downloadQuantized() {
+    const cv = document.getElementById('canvasQuantized');
+    if (!cv.width) { alert('请先量化图片'); return; }
+    cv.toBlob(b => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'quantized.png';
+        a.click();
+    });
+}
+
+function downloadDecoded() {
+    const cv = document.getElementById('canvasDecoded');
+    if (!cv.width) { alert('请先解码'); return; }
+    cv.toBlob(b => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'decoded.png';
+        a.click();
+    });
+}
+
+function downloadText() {
+    const t = document.getElementById('base91Output').value;
+    if (!t) { alert('没有输出'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' }));
+    a.download = 'encoded.b91.txt';
+    a.click();
+}
+
+/* ------------------------- drag & drop ------------------------- */
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) {
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        document.getElementById('fileInput').files = dt.files;
+        processImage();
+    }
+});
+
+document.getElementById('fileInput').addEventListener('change', () => {
+    if (document.getElementById('fileInput').files[0]) processImage();
+});
+
+/* Leaving mobile width: drop the mobile-only result state so the desktop
+   layout (original previews in place) is exactly as before. */
+let wasMobile = IS_MOBILE();
+window.addEventListener('resize', () => {
+    const isM = IS_MOBILE();
+    if (wasMobile && !isM) {
+        document.body.classList.remove('has-result');
+        document.getElementById('controlsBlock').classList.remove('collapsed');
+        document.getElementById('paramToggle').classList.remove('open');
+    }
+    wasMobile = isM;
+});
+
+/* ---------------------- deflate availability ---------------------- */
+if (!HAS_DEFLATE) {
+    const idx = COMP_OPTIONS.findIndex(o => o.value === '2');
+    COMP_OPTIONS.forEach(o => {
+        if (o.value === '2' || o.value === '3') {
+            o.label = o.label.replace('Deflate', 'Deflate×');
+            o.title = '当前浏览器不支持 CompressionStream';
+        }
+    });
+    if (CFG.comp === '2' || CFG.comp === '3') {
+        CFG.comp = 'auto';
+    }
+}
+
+/* --------------------------- boot --------------------------- */
+// Restore the last session's settings from LocalStorage, then build chips.
+const saved = loadConfig();
+Object.assign(CFG, saved);
+document.getElementById('maxDim').value = CFG.maxDim;
+setPalette(CFG.bases, CFG.exts);
+renderAllChips();
+setPreviewLayout(CFG.previewLayout);
+applyCodeVisibility();
+applyPrefsSwitches();
+applyTheme();
+_segTheme = buildSegment('themeChips',
+    THEME_OPTIONS,
+    CFG.theme,
+    (v) => { CFG.theme = v; applyTheme(); saveConfig(); }
+);
+document.getElementById('copyBtn').disabled = true;
+document.getElementById('maxDim').addEventListener('input', () => {
+    CFG.maxDim = parseInt(document.getElementById('maxDim').value, 10) || 1280;
+    updateParamSummary();
+    saveConfig();
+    rerunIfLoaded();
+});
+updateParamSummary();
+</script>
+</body>
+</html>
