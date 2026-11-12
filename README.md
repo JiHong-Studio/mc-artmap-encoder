@@ -1,4 +1,4 @@
-# MC 方块量化编码器
+# MC Artmap Encoder
 
 该页面为网易版《我的世界》纯字符导入地图画的编码实现，[mc.jihong.chengxing.site](https://mc.jihong.chengxing.site) 是托管在 Cloudflare 上的官方页面。此为纯前端实现，因此，若你打开该页面有困难，可下载该页面本地使用。
 
@@ -15,7 +15,7 @@
 
 ## 使用
 
-直接在浏览器中打开 `mc-wool-encoder.html` 即可使用，无需服务器。
+直接在浏览器中打开 `mc-artmap-encoder.html` 即可使用，无需服务器。
 
 ## 许可
 
