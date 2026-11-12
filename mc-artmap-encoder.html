@@ -2301,6 +2301,22 @@ function buildSegment(containerId, options, currentValue, onSelect) {
         }
     }
 
+    let _rafId = null;
+
+    function updateActiveFromPos() {
+        const indRect = indicator.getBoundingClientRect();
+        const indCenter = indRect.left + indRect.width / 2;
+        let nearest = 0, minD = Infinity;
+        opts.forEach((opt, i) => {
+            const r = opt.getBoundingClientRect();
+            const center = r.left + r.width / 2;
+            const d = Math.abs(center - indCenter);
+            if (d < minD) { minD = d; nearest = i; }
+        });
+        opts.forEach((el, i) => el.classList.toggle('on', i === nearest));
+        return nearest;
+    }
+
     function moveIndicator(val, animate) {
         const idx = options.findIndex(o => o.value === val);
         if (idx < 0) return;
@@ -2309,7 +2325,28 @@ function buildSegment(containerId, options, currentValue, onSelect) {
         indicator.classList.toggle('dragging', !animate);
         indicator.style.transform = 'translateX(' + pos.left + 'px)';
         indicator.style.width = pos.width + 'px';
-        opts.forEach((e, i) => e.classList.toggle('on', i === idx));
+        if (animate) {
+            // During the CSS transition, dynamically update which option
+            // is "on" based on the indicator's actual rendered position
+            if (_rafId) cancelAnimationFrame(_rafId);
+            let frames = 0;
+            function tick() {
+                const nearest = updateActiveFromPos();
+                frames++;
+                const indRect = indicator.getBoundingClientRect();
+                const tgtRect = opts[idx].getBoundingClientRect();
+                if (nearest === idx && Math.abs(indRect.left - tgtRect.left) < 1.5) {
+                    _rafId = null;
+                    return;
+                }
+                if (frames > 40) { _rafId = null; return; }
+                _rafId = requestAnimationFrame(tick);
+            }
+            _rafId = requestAnimationFrame(tick);
+        } else {
+            if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+            opts.forEach((e, i) => e.classList.toggle('on', i === idx));
+        }
         scrollOptionIntoView(idx, animate);
     }
 
