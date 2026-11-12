@@ -80,21 +80,23 @@
 }
 /* Selected chips — light blue in both themes */
 [data-theme="dark"] .chip.on {
-    background: var(--accent-soft);
-    color: var(--accent);
+    background: #1e3a5f;
+    color: #93c5fd;
     font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5);
 }
-[data-theme="dark"] .chip.on:hover { filter: brightness(1.15); }
-/* Segmented indicator: lighter than track in dark mode */
+[data-theme="dark"] .chip.on:hover { background: #234670; }
+/* Segmented indicator: blue in dark mode */
 [data-theme="dark"] .seg-indicator {
-    background: #3f3f46;
-    box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 0 0 0.5px var(--line-strong);
+    background: #1e3a5f;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 0 0 1px rgba(59, 130, 246, 0.5);
 }
-[data-theme="dark"] .seg-opt.on { color: #fff; }
+[data-theme="dark"] .seg-opt.on { color: #93c5fd; }
 /* Layout toggle active */
 [data-theme="dark"] .lt-btn.on {
-    background: #3f3f46;
-    box-shadow: 0 1px 2px rgba(0,0,0,.2);
+    background: #1e3a5f;
+    color: #93c5fd;
+    box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 0 0 1px rgba(59, 130, 246, 0.5);
 }
 /* Tooltip */
 [data-theme="dark"] .color-swatch .tip { background: #3f3f46; }
@@ -726,8 +728,8 @@ textarea[readonly] { color: var(--ink-2); }
     left: 0;
     height: calc(100% - 6px);
     border-radius: 999px;
-    background: var(--bg);
-    box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 0.5px var(--line);
+    background: var(--accent-soft);
+    box-shadow: 0 1px 3px rgba(37, 99, 235, .12), 0 0 0 1px rgba(37, 99, 235, .15);
     transition: transform var(--dur) var(--ease-bounce), width var(--dur) var(--ease-bounce);
     pointer-events: none;
     z-index: 0;
@@ -755,7 +757,7 @@ textarea[readonly] { color: var(--ink-2); }
 }
 .seg-opt:hover { color: var(--ink-2); }
 .seg-opt:active { background: transparent !important; transform: none; }
-.seg-opt.on { color: var(--ink); font-weight: 600; }
+.seg-opt.on { color: var(--accent); font-weight: 600; }
 
 .palette-live {
     display: flex;
@@ -869,9 +871,9 @@ textarea[readonly] { color: var(--ink-2); }
 .lt-btn:hover { color: var(--ink-2); }
 .lt-btn:active { transform: scale(.9); }
 .lt-btn.on {
-    background: var(--bg);
-    color: var(--ink);
-    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    background: var(--accent-soft);
+    color: var(--accent);
+    box-shadow: 0 1px 3px rgba(37, 99, 235, .12), 0 0 0 1px rgba(37, 99, 235, .15);
 }
 .preview-pair {
     display: grid;
